@@ -216,8 +216,15 @@ class JointModel(BertPreTrainedModel):
         return preds
 
     def annotate(self, text=None, input_file=None, output_file=None, batch_size=1, output_type=""):
-        if text is not None:
+        if isinstance(text, str):
             data = [text.split(" ")]
+            batch_size=1
+        elif isinstance(text, list):
+            data = [i.split() for i in text]
+            if batch_size > len(data):
+                batch_size = len(data)
+            print("The number of sentences: ", len(data))
+           
         else:
             f = open(input_file)
             data = []
