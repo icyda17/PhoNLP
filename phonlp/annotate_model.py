@@ -223,7 +223,7 @@ class JointModel(BertPreTrainedModel):
             data = [i.split() for i in text]
             if batch_size > len(data):
                 batch_size = len(data)
-            print("The number of sentences: ", len(data))
+            # print("The number of sentences: ", len(data))
            
         else:
             f = open(input_file)
