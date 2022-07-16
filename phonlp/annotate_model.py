@@ -241,7 +241,7 @@ class JointModel(BertPreTrainedModel):
         test_preds_pos = []
         test_preds_dep = []
         test_preds_ner = []
-        for i in tqdm(range(len(data_tagger))):
+        for i in range(len(data_tagger)):
             tokens_phobert, first_subword, words_mask, number_of_words, orig_idx, sentlens = self.get_batch(
                 i, data_tagger
             )
