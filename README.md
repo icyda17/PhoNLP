@@ -19,11 +19,16 @@ Python API:
 import phonlp
 
 # Load the trained PhoNLP model
-model = phonlp.load(save_dir='/absolute/path/to/phonlp_tmp')
+model = load(save_dir="/absolute/path/to/phonlp_tmp",
+            tokenizer_config_dir='/absolute/path/to/phonlp_tmp', 
+            load_from_local=True, onnx_phobert="/absolute/path/to/phobert_onnx_model", device='cpu') 
+            # onnx_phobert = None if do not use onnx to run model
 
 # Annotate a corpus where each line represents a word-segmented sentence
+
 model.annotate(input_file='/absolute/path/to/input.txt', output_file='/absolute/path/to/output.txt')
 
 # Annotate a word-segmented sentence
-model.print_out(model.annotate(text="Xin_chào Hà_Nội"))
+model.print_out(model.annotate(text="Xin_chào Hà_Nội", batch_size=2))
 ```
+Detailed information refers to [run_script](phonlp/run_script.py)

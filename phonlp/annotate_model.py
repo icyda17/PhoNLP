@@ -16,7 +16,7 @@ from transformers import AutoModel, BertPreTrainedModel
 
 
 class JointModel(BertPreTrainedModel):
-    def __init__(self, args, vocab, config, tokenizer):
+    def __init__(self, args, vocab, config, tokenizer, device_use, phobert_onnx):
         super(JointModel, self).__init__(config)
 
         self.vocab = vocab
@@ -24,11 +24,18 @@ class JointModel(BertPreTrainedModel):
         self.unsaved_modules = []
         self.config = config
         self.tokenizer = tokenizer
+        self.device_use = device_use
+        self.use_onnx = True
+        if phobert_onnx is None:
+            self.use_onnx = False
 
         # input layers
         self.input_size = 0
 
-        self.phobert = AutoModel.from_config(self.config)
+        if self.use_onnx:
+            self.phobert = phobert_onnx
+        else:
+            self.phobert = AutoModel.from_config(self.config)
         self.input_size += self.config.to_dict()["hidden_size"]
 
         self.drop_replacement_ner = nn.Parameter(
@@ -39,10 +46,13 @@ class JointModel(BertPreTrainedModel):
             torch.randn(self.input_size + self.args["tag_emb_dim"])
             / np.sqrt(self.input_size + self.args["tag_emb_dim"])
         )
-        self.drop_replacement_pos = nn.Parameter(torch.randn(self.input_size) / np.sqrt(self.input_size))
+        self.drop_replacement_pos = nn.Parameter(
+            torch.randn(self.input_size) / np.sqrt(self.input_size))
 
-        self.upos_hid = nn.Linear(self.input_size, self.args["deep_biaff_hidden_dim"])
-        self.upos_clf = nn.Linear(self.args["deep_biaff_hidden_dim"], len(vocab["upos"]))
+        self.upos_hid = nn.Linear(
+            self.input_size, self.args["deep_biaff_hidden_dim"])
+        self.upos_clf = nn.Linear(
+            self.args["deep_biaff_hidden_dim"], len(vocab["upos"]))
 
         self.upos_emb_matrix_ner = nn.Parameter(
             torch.rand(len(vocab["upos"]), self.args["tag_emb_dim"]), requires_grad=True
@@ -54,7 +64,9 @@ class JointModel(BertPreTrainedModel):
         self.upos_clf.bias.data.zero_()
 
         self.dep_hid = nn.Linear(
-            self.input_size + self.args["tag_emb_dim"], self.input_size + self.args["tag_emb_dim"]
+            self.input_size +
+            self.args["tag_emb_dim"], self.input_size +
+            self.args["tag_emb_dim"]
         )
 
         # classifiers
@@ -93,12 +105,14 @@ class JointModel(BertPreTrainedModel):
                 dropout=args["dropout"],
             )
 
-        self.ner_tag_clf = nn.Linear(self.input_size + self.args["tag_emb_dim"], len(self.vocab["ner_tag"]))
+        self.ner_tag_clf = nn.Linear(
+            self.input_size + self.args["tag_emb_dim"], len(self.vocab["ner_tag"]))
         self.ner_tag_clf.bias.data.zero_()
 
         # criterion
         self.crit_ner = CRFLoss(len(self.vocab["ner_tag"]))
-        self.crit_dep = nn.CrossEntropyLoss(ignore_index=-1, reduction="sum")  # ignore padding
+        self.crit_dep = nn.CrossEntropyLoss(
+            ignore_index=-1, reduction="sum")  # ignore padding
         self.crit_pos = nn.CrossEntropyLoss(ignore_index=1)
         self.drop_ner = nn.Dropout(args["dropout"])
         self.worddrop_ner = WordDropout(args["word_dropout"])
@@ -110,18 +124,28 @@ class JointModel(BertPreTrainedModel):
         self.drop_dep = nn.Dropout(args["dropout"])
         self.worddrop_dep = WordDropout(args["word_dropout"])
 
+    def get_bert_emb(self, tokens_phobert):
+        if self.use_onnx:
+            phobert_emb = torch.Tensor(self.phobert.run(output_names=["last_hidden_state"], input_feed={"input_ids": tokens_phobert.detach().cpu().numpy(),
+                                                                                                        "token_type_ids": np.zeros_like(tokens_phobert),
+                                                                                                        "attention_mask": np.ones_like(tokens_phobert)})[0])
+        else:
+            phobert_emb = self.phobert(tokens_phobert)[2][-1]
+        return phobert_emb
+
     def tagger_forward(self, tokens_phobert, words_phobert, sentlens):
         def pack(x):
             return pack_padded_sequence(x, sentlens, batch_first=True)
 
         inputs = []
 
-        phobert_emb = self.phobert(tokens_phobert)[2][-1]
+        phobert_emb = self.get_bert_emb(tokens_phobert)
         phobert_emb = torch.cat(
-            [torch.index_select(phobert_emb[i], 0, words_phobert[i]).unsqueeze(0) for i in range(phobert_emb.size(0))],
+            [torch.index_select(phobert_emb[i], 0, words_phobert[i]).unsqueeze(
+                0) for i in range(phobert_emb.size(0))],
             dim=0,
         )
-        if torch.cuda.is_available():
+        if self.device_use == 'cuda':
             phobert_emb = phobert_emb.cuda()
         phobert_emb = pack(phobert_emb)
         inputs += [phobert_emb]
@@ -138,7 +162,8 @@ class JointModel(BertPreTrainedModel):
         preds_pos = [pad(upos_pred).max(2)[1]]
 
         pos_dis = F.softmax(pad(upos_pred), dim=-1)
-        upos_embed_matrix_dup = self.upos_emb_matrix_ner.repeat(pos_dis.size(0), 1, 1)
+        upos_embed_matrix_dup = self.upos_emb_matrix_ner.repeat(
+            pos_dis.size(0), 1, 1)
         pos_emb = torch.matmul(pos_dis, upos_embed_matrix_dup)
         pos_emb = pack(pos_emb)
         inputs += [pos_emb]
@@ -156,12 +181,13 @@ class JointModel(BertPreTrainedModel):
             return pack_padded_sequence(x, sentlens, batch_first=True)
 
         inputs = []
-        phobert_emb = self.phobert(tokens_phobert)[2][-1]
+        phobert_emb = self.get_bert_emb(tokens_phobert)
         phobert_emb = torch.cat(
-            [torch.index_select(phobert_emb[i], 0, first_subword[i]).unsqueeze(0) for i in range(phobert_emb.size(0))],
+            [torch.index_select(phobert_emb[i], 0, first_subword[i]).unsqueeze(
+                0) for i in range(phobert_emb.size(0))],
             dim=0,
         )
-        if torch.cuda.is_available():
+        if self.device_use == 'cuda':
             phobert_emb = phobert_emb.cuda()
         phobert_emb = pack(phobert_emb)
         inputs += [phobert_emb]
@@ -175,7 +201,8 @@ class JointModel(BertPreTrainedModel):
         upos_hid = F.relu(self.upos_hid(inputs_pos))
         upos_pred = self.upos_clf(self.drop_pos(upos_hid))
         pos_dis = F.softmax(pad(upos_pred), dim=-1)
-        upos_embed_matrix_dup = self.upos_emb_matrix_dep.repeat(pos_dis.size(0), 1, 1)
+        upos_embed_matrix_dup = self.upos_emb_matrix_dep.repeat(
+            pos_dis.size(0), 1, 1)
         pos_emb = torch.matmul(pos_dis, upos_embed_matrix_dup)
         pos_emb = pack(pos_emb)
         inputs += [pos_emb]
@@ -186,8 +213,10 @@ class JointModel(BertPreTrainedModel):
         hidden_out = self.dep_hid(inputs)
         hidden_out = pad(hidden_out)
 
-        unlabeled_scores = self.unlabeled(self.drop_dep(hidden_out), self.drop_dep(hidden_out)).squeeze(3)
-        deprel_scores = self.deprel(self.drop_dep(hidden_out), self.drop_dep(hidden_out))
+        unlabeled_scores = self.unlabeled(self.drop_dep(
+            hidden_out), self.drop_dep(hidden_out)).squeeze(3)
+        deprel_scores = self.deprel(self.drop_dep(
+            hidden_out), self.drop_dep(hidden_out))
 
         if self.args["linearization"] or self.args["distance"]:
             head_offset = torch.arange(first_subword.size(1), device=unlabeled_scores.device).view(1, 1, -1).expand(
@@ -197,17 +226,22 @@ class JointModel(BertPreTrainedModel):
             )
 
         if self.args["linearization"]:
-            lin_scores = self.linearization(self.drop_dep(hidden_out), self.drop_dep(hidden_out)).squeeze(3)
-            unlabeled_scores += F.logsigmoid(lin_scores * torch.sign(head_offset).float()).detach()
+            lin_scores = self.linearization(self.drop_dep(
+                hidden_out), self.drop_dep(hidden_out)).squeeze(3)
+            unlabeled_scores += F.logsigmoid(lin_scores *
+                                             torch.sign(head_offset).float()).detach()
 
         if self.args["distance"]:
-            dist_scores = self.distance(self.drop_dep(hidden_out), self.drop_dep(hidden_out)).squeeze(3)
+            dist_scores = self.distance(self.drop_dep(
+                hidden_out), self.drop_dep(hidden_out)).squeeze(3)
             dist_pred = 1 + F.softplus(dist_scores)
             dist_target = torch.abs(head_offset)
-            dist_kld = -torch.log((dist_target.float() - dist_pred) ** 2 / 2 + 1)
+            dist_kld = -torch.log((dist_target.float() -
+                                  dist_pred) ** 2 / 2 + 1)
             unlabeled_scores += dist_kld.detach()
 
-        diag = torch.eye(unlabeled_scores.size(-1), dtype=torch.bool, device=unlabeled_scores.device).unsqueeze(0)
+        diag = torch.eye(unlabeled_scores.size(-1), dtype=torch.bool,
+                         device=unlabeled_scores.device).unsqueeze(0)
         unlabeled_scores.masked_fill_(diag, -float("inf"))
 
         preds = []
@@ -218,13 +252,13 @@ class JointModel(BertPreTrainedModel):
     def annotate(self, text=None, input_file=None, output_file=None, batch_size=1, output_type=""):
         if isinstance(text, str):
             data = [text.split(" ")]
-            batch_size=1
+            batch_size = 1
         elif isinstance(text, list):
             data = [i.split() for i in text]
             if batch_size > len(data):
                 batch_size = len(data)
             # print("The number of sentences: ", len(data))
-           
+
         else:
             f = open(input_file)
             data = []
@@ -248,7 +282,7 @@ class JointModel(BertPreTrainedModel):
             tokens_phobert1, first_subword1, words_mask1, number_of_words1, orig_idx1, sentlens1 = self.get_batch(
                 i, data_parser
             )
-            if torch.cuda.is_available():
+            if self.device_use == 'cuda':
                 tokens_phobert, first_subword, words_mask = (
                     tokens_phobert.cuda(),
                     first_subword.cuda(),
@@ -260,15 +294,18 @@ class JointModel(BertPreTrainedModel):
                     words_mask1.cuda(),
                 )
 
-            preds_dep = self.dep_forward(tokens_phobert1, first_subword1, sentlens1)
-            preds_pos, logits = self.tagger_forward(tokens_phobert, first_subword, sentlens)
+            preds_dep = self.dep_forward(
+                tokens_phobert1, first_subword1, sentlens1)
+            preds_pos, logits = self.tagger_forward(
+                tokens_phobert, first_subword, sentlens)
             batch_size = tokens_phobert.size(0)
             # DEP
             head_seqs = [
                 chuliu_edmonds_one_root(adj[:l, :l])[1:] for adj, l in zip(preds_dep[0], sentlens1)
             ]  # remove attachment for the root
             deprel_seqs = [
-                self.vocab["deprel"].unmap([preds_dep[1][i][j + 1][h] for j, h in enumerate(hs)])
+                self.vocab["deprel"].unmap(
+                    [preds_dep[1][i][j + 1][h] for j, h in enumerate(hs)])
                 for i, hs in enumerate(head_seqs)
             ]
             pred_tokens = [
@@ -277,7 +314,8 @@ class JointModel(BertPreTrainedModel):
             pred_tokens_dep = util.unsort(pred_tokens, orig_idx1)
 
             # POS
-            upos_seqs = [self.vocab["upos"].unmap(sent) for sent in preds_pos[0]]
+            upos_seqs = [self.vocab["upos"].unmap(
+                sent) for sent in preds_pos[0]]
             pred_tokens_pos = [
                 [[upos_seqs[i][j]] for j in range(sentlens[i])] for i in range(batch_size)
             ]  # , xpos_seqs[i][j], feats_seqs[i][j]
@@ -395,14 +433,15 @@ class JointModel(BertPreTrainedModel):
             firstSWindices = [len(input_ids)]
             for w in sent:
                 word_token = self.tokenizer.encode(w)
-                input_ids += word_token[1 : (len(word_token) - 1)]
+                input_ids += word_token[1: (len(word_token) - 1)]
                 firstSWindices.append(len(input_ids))
             firstSWindices = firstSWindices[: (len(firstSWindices) - 1)]
             input_ids.append(sep_id)
             processed_sent = [input_ids]
             processed_sent += [firstSWindices]
             processed_sent += [self.vocab["word"].map([w for w in sent])]
-            processed_sent += [[self.vocab["char"].map([x for x in w]) for w in sent]]
+            processed_sent += [[self.vocab["char"].map([x for x in w])
+                                for w in sent]]
             processed.append(processed_sent)
         return processed
 
@@ -414,25 +453,28 @@ class JointModel(BertPreTrainedModel):
             input_ids = [cls_id]
             firstSWindices = [len(input_ids)]
             root_token = self.tokenizer.encode("[ROOT]")
-            input_ids += root_token[1 : (len(root_token) - 1)]
+            input_ids += root_token[1: (len(root_token) - 1)]
             firstSWindices.append(len(input_ids))
             for w in sent:
                 word_token = self.tokenizer.encode(w)
-                input_ids += word_token[1 : (len(word_token) - 1)]
+                input_ids += word_token[1: (len(word_token) - 1)]
                 firstSWindices.append(len(input_ids))
             firstSWindices = firstSWindices[: (len(firstSWindices) - 1)]
             input_ids.append(sep_id)
 
             processed_sent = [input_ids]
             processed_sent += [firstSWindices]
-            processed_sent += [[ROOT_ID] + self.vocab["word"].map([w for w in sent])]
-            processed_sent += [[[ROOT_ID]] + [self.vocab["char"].map([x for x in w]) for w in sent]]
+            processed_sent += [[ROOT_ID] +
+                               self.vocab["word"].map([w for w in sent])]
+            processed_sent += [[[ROOT_ID]] +
+                               [self.vocab["char"].map([x for x in w]) for w in sent]]
             processed.append(processed_sent)
         return processed
 
     def chunk_batches(self, data, batch_size):
         res = []
-        (data,), self.data_orig_idx = sort_all([data], [len(x[2]) for x in data])
+        (data,), self.data_orig_idx = sort_all(
+            [data], [len(x[2]) for x in data])
         current = []
         for x in data:
             if len(current) >= batch_size:
@@ -470,5 +512,6 @@ class JointModel(BertPreTrainedModel):
         first_subword = batch[1]
         first_subword = get_long_tensor(first_subword, batch_size)
         sentlens = [len(x) for x in batch[1]]
-        data = (tokens_phobert, first_subword, words_mask, number_of_words, orig_idx, sentlens)
+        data = (tokens_phobert, first_subword, words_mask,
+                number_of_words, orig_idx, sentlens)
         return data
