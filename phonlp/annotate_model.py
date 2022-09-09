@@ -13,7 +13,7 @@ from phonlp.models.common.vocab import PAD_ID, ROOT_ID
 from torch.nn.utils.rnn import PackedSequence, pack_padded_sequence, pad_packed_sequence
 from tqdm import tqdm
 from transformers import AutoModel, BertPreTrainedModel
-
+from time import time
 
 class JointModel(BertPreTrainedModel):
     def __init__(self, args, vocab, config, tokenizer, device_use, phobert_onnx):
@@ -126,11 +126,19 @@ class JointModel(BertPreTrainedModel):
 
     def get_bert_emb(self, tokens_phobert):
         if self.use_onnx:
-            phobert_emb = torch.Tensor(self.phobert.run(output_names=["last_hidden_state"], input_feed={"input_ids": tokens_phobert.detach().cpu().numpy(),
+            s = time()
+            tokens_phobert = tokens_phobert.detach().cpu().numpy()
+            
+            phobert_emb = torch.Tensor(self.phobert.run(output_names=["last_hidden_state"], input_feed={"input_ids": tokens_phobert,
                                                                                                         "token_type_ids": np.zeros_like(tokens_phobert),
-                                                                                                        "attention_mask": np.ones_like(tokens_phobert)})[0])
+                                                                                          "attention_mask": np.ones_like(tokens_phobert)})[0])
+            e = time()
+            print(f"time onnx: {e-s}")  
         else:
+            s = time()
             phobert_emb = self.phobert(tokens_phobert)[2][-1]
+            e = time()
+            print(f"time non onnx: {e-s}")             
         return phobert_emb
 
     def tagger_forward(self, tokens_phobert, words_phobert, sentlens):
@@ -140,13 +148,14 @@ class JointModel(BertPreTrainedModel):
         inputs = []
 
         phobert_emb = self.get_bert_emb(tokens_phobert)
+        if self.device_use >= 0:
+            phobert_emb = phobert_emb.cuda(self.device_use)
         phobert_emb = torch.cat(
             [torch.index_select(phobert_emb[i], 0, words_phobert[i]).unsqueeze(
                 0) for i in range(phobert_emb.size(0))],
             dim=0,
         )
-        if self.device_use == 'cuda':
-            phobert_emb = phobert_emb.cuda()
+
         phobert_emb = pack(phobert_emb)
         inputs += [phobert_emb]
 
@@ -182,13 +191,14 @@ class JointModel(BertPreTrainedModel):
 
         inputs = []
         phobert_emb = self.get_bert_emb(tokens_phobert)
+        if self.device_use >= 0:
+            phobert_emb = phobert_emb.cuda(self.device_use)
         phobert_emb = torch.cat(
             [torch.index_select(phobert_emb[i], 0, first_subword[i]).unsqueeze(
                 0) for i in range(phobert_emb.size(0))],
             dim=0,
         )
-        if self.device_use == 'cuda':
-            phobert_emb = phobert_emb.cuda()
+
         phobert_emb = pack(phobert_emb)
         inputs += [phobert_emb]
 
@@ -282,16 +292,16 @@ class JointModel(BertPreTrainedModel):
             tokens_phobert1, first_subword1, words_mask1, number_of_words1, orig_idx1, sentlens1 = self.get_batch(
                 i, data_parser
             )
-            if self.device_use == 'cuda':
+            if self.device_use >= 0:
                 tokens_phobert, first_subword, words_mask = (
-                    tokens_phobert.cuda(),
-                    first_subword.cuda(),
-                    words_mask.cuda(),
+                    tokens_phobert.cuda(self.device_use),
+                    first_subword.cuda(self.device_use),
+                    words_mask.cuda(self.device_use),
                 )
                 tokens_phobert1, first_subword1, words_mask1 = (
-                    tokens_phobert1.cuda(),
-                    first_subword1.cuda(),
-                    words_mask1.cuda(),
+                    tokens_phobert1.cuda(self.device_use),
+                    first_subword1.cuda(self.device_use),
+                    words_mask1.cuda(self.device_use),
                 )
 
             preds_dep = self.dep_forward(

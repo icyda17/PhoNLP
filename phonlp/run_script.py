@@ -7,7 +7,7 @@ from phonlp.models.ner.vocab import MultiVocab
 from transformers import AutoConfig, AutoTokenizer
 from pathlib import Path
 from onnxruntime import InferenceSession
-
+from time import time
 
 def download(save_dir, url="https://public.vinai.io/phonlp.pt"):
     util.ensure_dir(save_dir)
@@ -18,7 +18,7 @@ def download(save_dir, url="https://public.vinai.io/phonlp.pt"):
     gdown.download(url, model_file)
 
 
-def load(save_dir="./", tokenizer_config_dir=None, download_flag: bool = False, load_from_local: bool = False, device: str = 'cpu', onnx_phobert: str = None, device_id: int = 0):
+def load(save_dir="./", tokenizer_config_dir=None, download_flag: bool = False, load_from_local: bool = False, device: int = -1, onnx_phobert: str = None):
     if save_dir[len(save_dir) - 1] == "/":
         model_file = save_dir + "phonlp.pt"
     else:
@@ -28,10 +28,10 @@ def load(save_dir="./", tokenizer_config_dir=None, download_flag: bool = False, 
     args = checkpoint["config"]
     vocab = MultiVocab.load_state_dict(checkpoint["vocab"])
     # check device
-    if device != 'cpu' and torch.cuda.is_available():
-        device_use = 'cuda'
+    if device >= 0 and torch.cuda.is_available():
+        device_use = device
     else:
-        device_use = 'cpu'
+        device_use = -1
     # load model
     phobert = None  # if not use onnx phobert model
     if load_from_local:
@@ -40,9 +40,9 @@ def load(save_dir="./", tokenizer_config_dir=None, download_flag: bool = False, 
         config_phobert = AutoConfig.from_pretrained(
             tokenizer_config_dir, output_hidden_states=True)
         if onnx_phobert is not None:
-            if device_use != 'cpu':
+            if device_use >= 0:
                 phobert = InferenceSession(onnx_phobert, providers=[(
-                    'CUDAExecutionProvider', {'device_id': device_id})])
+                    'CUDAExecutionProvider', {'device_id': device_use})])
             else:
                 phobert = InferenceSession(onnx_phobert, providers=[
                                            'CPUExecutionProvider'])
@@ -69,20 +69,22 @@ def load(save_dir="./", tokenizer_config_dir=None, download_flag: bool = False, 
                 continue
     else:
         model.load_state_dict(checkpoint["model"], strict=False)
-    if device_use == 'cpu':
-        model.to(torch.device("cpu"))
+    if device_use < 0:
+        model.to(torch.device('cpu'))
     else:
-        model.to(torch.device("cuda"))
+        model.to(torch.device(f"cuda:{device_use}"))
     model.eval()
     return model
 
-
 if __name__ == "__main__":
     # download("./")
-    onnx_phobert = '/home/thuytt17/NLP/ONNX-convert/labs/convert_phonlp/model.onnx'
-    model = load(save_dir="/home/thuytt17/NLP/bert_topic/resources/phonlp_models",
-                 tokenizer_config_dir='/home/thuytt17/NLP/bert_topic/resources/phonlp_models', 
-                 load_from_local=True, onnx_phobert=onnx_phobert)
+    onnx_phobert = '/thuytt14/NLP/onnx/labs/convert_phonlp/models/model.onnx'
+    model = load(save_dir="/thuytt14/NLP/bert_topic/resources/phonlp_models",
+                 tokenizer_config_dir='/thuytt14/NLP/bert_topic/resources/phonlp_models', 
+                 load_from_local=True, onnx_phobert=None)
     text = "Tôi tên là Thế_Linh ."
+    s = time()
     output = model.annotate(text=text)
+    e = time()
+    print(f"Time process: {e-s}")
     model.print_out(output)
