@@ -81,7 +81,7 @@ if __name__ == "__main__":
     onnx_phobert = '/thuytt14/NLP/onnx/labs/convert_phonlp/models/model.onnx'
     model = load(save_dir="/thuytt14/NLP/bert_topic/resources/phonlp_models",
                  tokenizer_config_dir='/thuytt14/NLP/bert_topic/resources/phonlp_models', 
-                 load_from_local=True, onnx_phobert=None)
+                 load_from_local=True, onnx_phobert=None, device=0)
     text = "Tôi tên là Thế_Linh ."
     s = time()
     output = model.annotate(text=text)
