@@ -21,7 +21,7 @@ import phonlp
 # Load the trained PhoNLP model
 model = load(save_dir="/absolute/path/to/phonlp_tmp",
             tokenizer_config_dir='/absolute/path/to/phonlp_tmp', 
-            load_from_local=True, onnx_phobert="/absolute/path/to/phobert_onnx_model", device='cpu') 
+            load_from_local=True, onnx_phobert="/absolute/path/to/phobert_onnx_model", device=-1) 
             # onnx_phobert = None if do not use onnx to run model
 
 # Annotate a corpus where each line represents a word-segmented sentence
@@ -32,3 +32,7 @@ model.annotate(input_file='/absolute/path/to/input.txt', output_file='/absolute/
 model.print_out(model.annotate(text="Xin_chào Hà_Nội", batch_size=2))
 ```
 Detailed information refers to [run_script](phonlp/run_script.py)
+
+### Notes
+1. Using GPU
+When use GPU, make sure to input ```onnx_phobert="/absolute/path/to/phobert_onnx_model_optimized_fp16"``` to achieve better performance

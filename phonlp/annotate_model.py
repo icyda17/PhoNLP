@@ -128,7 +128,7 @@ class JointModel(BertPreTrainedModel):
         if self.use_onnx:
             # s = time()
             tokens_phobert = tokens_phobert.detach().cpu().numpy()
-            
+
             phobert_emb = torch.Tensor(self.phobert.run(output_names=["last_hidden_state"], input_feed={"input_ids": tokens_phobert,
                                                                                                         "token_type_ids": np.zeros_like(tokens_phobert),
                                                                                           "attention_mask": np.ones_like(tokens_phobert)})[0])

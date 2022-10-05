@@ -89,4 +89,4 @@ if __name__ == "__main__":
     output = model.annotate(text=text, batch_size=2)
     e = time()
     print(f"Time process: {e-s}")
-    model.print_out(output)
+    # model.print_out(output)

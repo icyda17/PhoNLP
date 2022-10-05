@@ -4,3 +4,4 @@ pytest
 gdown>=3.12.2
 numpy
 tqdm
+onnxruntime
