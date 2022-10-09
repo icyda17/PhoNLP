@@ -79,12 +79,10 @@ def load(save_dir="./", tokenizer_config_dir=None, download_flag: bool = False, 
 if __name__ == "__main__":
     # download("./")
     onnx_phobert = '/thuytt14/NLP/onnx/labs/convert_phonlp/models/model.onnx'
-    model = load(save_dir="/home/thuytt17/NLP/bert_topic/resources/phonlp_models",
-                 tokenizer_config_dir='/home/thuytt17/NLP/bert_topic/resources/phonlp_models', 
-                 load_from_local=True, onnx_phobert=None, device=0)
-    text = ['Thật vậy hình_ảnh của người_nhà_giáo đã gắn_bó với chúng_ta trong xuyên suốt cuộc đời.Từ khi ta biết xa vòng_tay của cha_mẹ .',
- 'Ta được chở_che , dìu_dắt từng bước từng bước đầu_tiên vào môi_trường mới.Đê ́n lúc lớn hơn 1 chút cũng chính thầy_cô là người dạy cho ta những con số , những chữ viết đầu tiên và những kiến thức đầy bổ í ch.Thầy cô còn dạy cho ta cách làm người cách đối xử như thế nào cho văn_minh , lịch sự .',
- 'Giúp ta trở_thành một con người hoàn thiện hơn trong cuộc đờ i.Hi ̀nh ảnh của thầy cô như người lái đò .']
+    model = load(save_dir="/thuytt14/NLP/bert_topic/resources/phonlp_models",
+                 tokenizer_config_dir='/thuytt14/NLP/bert_topic/resources/phonlp_models', 
+                 load_from_local=True, onnx_phobert=onnx_phobert, device=-1)
+    text = "Tôi "*256
     s = time()
     output = model.annotate(text=text, batch_size=2)
     e = time()
