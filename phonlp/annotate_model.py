@@ -126,19 +126,19 @@ class JointModel(BertPreTrainedModel):
 
     def get_bert_emb(self, tokens_phobert):
         if self.use_onnx:
-            s = time()
+            # s = time()
             tokens_phobert = tokens_phobert.detach().cpu().numpy()
             
             phobert_emb = torch.Tensor(self.phobert.run(output_names=["last_hidden_state"], input_feed={"input_ids": tokens_phobert,
                                                                                                         "token_type_ids": np.zeros_like(tokens_phobert),
                                                                                           "attention_mask": np.ones_like(tokens_phobert)})[0])
-            e = time()
-            print(f"time onnx: {e-s}")  
+            # e = time()
+            # print(f"time onnx: {e-s}")  
         else:
-            s = time()
+            # s = time()
             phobert_emb = self.phobert(tokens_phobert)[2][-1]
-            e = time()
-            print(f"time non onnx: {e-s}")             
+            # e = time()
+            # print(f"time non onnx: {e-s}")             
         return phobert_emb
 
     def tagger_forward(self, tokens_phobert, words_phobert, sentlens):
