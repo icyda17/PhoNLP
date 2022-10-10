@@ -37,6 +37,6 @@ setup(
     classifiers=classifiers,
     keyword="phonlp",
     packages=find_packages(),
-    install_requires=["transformers>=3.2.0", "torch>=1.4.0", "numpy", "gdown>=3.12.2", "pytest", "tqdm"],
+    install_requires=["transformers>=3.2.0", "torch>=1.4.0", "numpy", "gdown>=3.12.2", "pytest", "tqdm", "onnxruntime", "onnxruntime-gpu"],
     python_requires=">=3.6",
 )
