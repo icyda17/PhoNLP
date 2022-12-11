@@ -124,7 +124,7 @@ class JointModel(BertPreTrainedModel):
         self.drop_dep = nn.Dropout(args["dropout"])
         self.worddrop_dep = WordDropout(args["word_dropout"])
 
-    def get_bert_emb(self, tokens_phobert):
+    async def get_bert_emb(self, tokens_phobert):
         if self.use_onnx:
             # s = time()
             tokens_phobert = tokens_phobert.detach().cpu().numpy()
@@ -141,13 +141,13 @@ class JointModel(BertPreTrainedModel):
             # print(f"time non onnx: {e-s}")             
         return phobert_emb
 
-    def tagger_forward(self, tokens_phobert, words_phobert, sentlens):
+    async def tagger_forward(self, tokens_phobert, words_phobert, sentlens):
         def pack(x):
             return pack_padded_sequence(x, sentlens, batch_first=True)
 
         inputs = []
 
-        phobert_emb = self.get_bert_emb(tokens_phobert)
+        phobert_emb = await self.get_bert_emb(tokens_phobert)
         if self.device_use >= 0:
             phobert_emb = phobert_emb.cuda(self.device_use)
         phobert_emb = torch.cat(
@@ -185,12 +185,12 @@ class JointModel(BertPreTrainedModel):
 
         return preds_pos, logits
 
-    def dep_forward(self, tokens_phobert, first_subword, sentlens):
+    async def dep_forward(self, tokens_phobert, first_subword, sentlens):
         def pack(x):
             return pack_padded_sequence(x, sentlens, batch_first=True)
 
         inputs = []
-        phobert_emb = self.get_bert_emb(tokens_phobert)
+        phobert_emb = await self.get_bert_emb(tokens_phobert)
         if self.device_use >= 0:
             phobert_emb = phobert_emb.cuda(self.device_use)
         phobert_emb = torch.cat(
@@ -259,7 +259,7 @@ class JointModel(BertPreTrainedModel):
         preds.append(deprel_scores.max(3)[1].detach().cpu().numpy())
         return preds
 
-    def annotate(self, text=None, input_file=None, output_file=None, batch_size=1, output_type=""):
+    async def annotate(self, text=None, input_file=None, output_file=None, batch_size=1, output_type=""):
         if isinstance(text, str):
             data = [text.split(" ")]
             batch_size = 1
@@ -304,9 +304,9 @@ class JointModel(BertPreTrainedModel):
                     words_mask1.cuda(self.device_use),
                 )
 
-            preds_dep = self.dep_forward(
+            preds_dep = await self.dep_forward(
                 tokens_phobert1, first_subword1, sentlens1)
-            preds_pos, logits = self.tagger_forward(
+            preds_pos, logits = await self.tagger_forward(
                 tokens_phobert, first_subword, sentlens)
             batch_size = tokens_phobert.size(0)
             # DEP

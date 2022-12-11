@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from typing import Optional, Text
+
 import gdown
 import torch
 from phonlp.annotate_model import JointModel
@@ -6,8 +8,9 @@ from phonlp.models.common import utils as util
 from phonlp.models.ner.vocab import MultiVocab
 from transformers import AutoConfig, AutoTokenizer
 from pathlib import Path
-from onnxruntime import InferenceSession
+# from onnxruntime import InferenceSession
 from time import time
+
 
 def download(save_dir, url="https://public.vinai.io/phonlp.pt"):
     util.ensure_dir(save_dir)
@@ -18,7 +21,8 @@ def download(save_dir, url="https://public.vinai.io/phonlp.pt"):
     gdown.download(url, model_file)
 
 
-def load(save_dir="./", tokenizer_config_dir=None, download_flag: bool = False, load_from_local: bool = False, device: int = -1, onnx_phobert: str = None):
+def load(save_dir="./", tokenizer_config_dir=None, download_flag: bool = False,
+         load_from_local: bool = False, device: int = -1, onnx_phobert: Optional[Text] = None):
     if save_dir[len(save_dir) - 1] == "/":
         model_file = save_dir + "phonlp.pt"
     else:
@@ -39,13 +43,13 @@ def load(save_dir="./", tokenizer_config_dir=None, download_flag: bool = False, 
             tokenizer_config_dir, use_fast=False)
         config_phobert = AutoConfig.from_pretrained(
             tokenizer_config_dir, output_hidden_states=True)
-        if onnx_phobert is not None:
-            if device_use >= 0:
-                phobert = InferenceSession(onnx_phobert, providers=[(
-                    'CUDAExecutionProvider', {'device_id': device_use})])
-            else:
-                phobert = InferenceSession(onnx_phobert, providers=[
-                                           'CPUExecutionProvider'])
+        # if onnx_phobert is not None:
+        #     if device_use >= 0:
+        #         phobert = InferenceSession(onnx_phobert, providers=[(
+        #             'CUDAExecutionProvider', {'device_id': device_use})])
+        #     else:
+        #         phobert = InferenceSession(onnx_phobert, providers=[
+        #                                    'CPUExecutionProvider'])
     else:
         tokenizer = AutoTokenizer.from_pretrained(
             args["pretrained_lm"], use_fast=False)
@@ -76,15 +80,16 @@ def load(save_dir="./", tokenizer_config_dir=None, download_flag: bool = False, 
     model.eval()
     return model
 
+
 if __name__ == "__main__":
     # download("./")
     onnx_phobert = '/thuytt14/NLP/onnx/labs/convert_phonlp/models/model.onnx'
     model = load(save_dir="/thuytt14/NLP/bert_topic/resources/phonlp_models",
-                 tokenizer_config_dir='/thuytt14/NLP/bert_topic/resources/phonlp_models', 
+                 tokenizer_config_dir='/thuytt14/NLP/bert_topic/resources/phonlp_models',
                  load_from_local=True, onnx_phobert=onnx_phobert, device=-1)
-    text = "Tôi "*256
+    text = "Tôi " * 256
     s = time()
     output = model.annotate(text=text, batch_size=2)
     e = time()
-    print(f"Time process: {e-s}")
+    print(f"Time process: {e - s}")
     # model.print_out(output)
