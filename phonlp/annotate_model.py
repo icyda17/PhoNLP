@@ -444,6 +444,9 @@ class JointModel(BertPreTrainedModel):
             for w in sent:
                 word_token = self.tokenizer.encode(w)
                 input_ids += word_token[1: (len(word_token) - 1)]
+                if len(input_ids) > 255:
+                    input_ids = input_ids[:-1]
+                    break
                 firstSWindices.append(len(input_ids))
             firstSWindices = firstSWindices[: (len(firstSWindices) - 1)]
             input_ids.append(sep_id)
@@ -468,6 +471,9 @@ class JointModel(BertPreTrainedModel):
             for w in sent:
                 word_token = self.tokenizer.encode(w)
                 input_ids += word_token[1: (len(word_token) - 1)]
+                if len(input_ids) > 255:
+                    input_ids = input_ids[:-1]
+                    break
                 firstSWindices.append(len(input_ids))
             firstSWindices = firstSWindices[: (len(firstSWindices) - 1)]
             input_ids.append(sep_id)
